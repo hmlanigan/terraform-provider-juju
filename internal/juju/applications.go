@@ -19,8 +19,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/juju/charm/v8"
-	charmresources "github.com/juju/charm/v8/resource"
+	"github.com/juju/charm/v11"
+	charmresources "github.com/juju/charm/v11/resource"
 	"github.com/juju/clock"
 	"github.com/juju/collections/set"
 	jujuerrors "github.com/juju/errors"
@@ -33,10 +33,10 @@ import (
 	apiresources "github.com/juju/juju/api/client/resources"
 	apicommoncharm "github.com/juju/juju/api/common/charm"
 	"github.com/juju/juju/cmd/juju/application/utils"
+	"github.com/juju/juju/core/base"
 	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/instance"
 	"github.com/juju/juju/core/model"
-	"github.com/juju/juju/core/series"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/rpc/params"
 	"github.com/juju/juju/version"
@@ -215,37 +215,32 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 
 	// Look at input.CharmBase and input.CharmSeries for an operating
 	// system to deploy with. Only one is allowed and Charm Base is
-	// preferred. Keep the data as a Series for now as, the
-	// DeducePlatform method expects a series to be provided, not a
-	// base. Luckily, the DeduceOrigin method returns an origin which
+	// preferred. Luckily, the DeduceOrigin method returns an origin which
 	// does contain the base and a series.
-	var userSuppliedSeries string
+	var userSuppliedBase base.Base
 	if input.CharmBase != "" {
-		b, err := series.ParseBaseFromString(input.CharmBase)
-		if err != nil {
-			return nil, err
-		}
-		userSuppliedSeries, err = series.GetSeriesFromBase(b)
+		userSuppliedBase, err = base.ParseBaseFromString(input.CharmBase)
 		if err != nil {
 			return nil, err
 		}
 	} else if input.CharmSeries != "" {
-		userSuppliedSeries = input.CharmSeries
+		userSuppliedBase, err = base.GetBaseFromSeries(input.CharmSeries)
+		if err != nil {
+			return nil, err
+		}
 	}
 	platformCons, err := modelconfigAPIClient.GetModelConstraints()
 	if err != nil {
 		return nil, err
 	}
-	platform, err := utils.DeducePlatform(input.Constraints, userSuppliedSeries, platformCons)
-	if err != nil {
-		return nil, err
-	}
+	platform := utils.MakePlatform(input.Constraints, userSuppliedBase, platformCons)
 
 	urlForOrigin := charmURL
 	if input.CharmRevision != UnspecifiedRevision {
 		urlForOrigin = urlForOrigin.WithRevision(input.CharmRevision)
 	}
-	urlForOrigin = urlForOrigin.WithSeries(userSuppliedSeries)
+	// HEATHER fix me
+	//urlForOrigin = urlForOrigin.WithSeries(userSuppliedSeries)
 
 	origin, err := utils.DeduceOrigin(urlForOrigin, channel, platform)
 	if err != nil {
@@ -255,7 +250,8 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	// Charm or bundle has been supplied as a URL so we resolve and
 	// deploy using the store but pass in the origin command line
 	// argument so users can target a specific origin.
-	resolvedURL, resolvedOrigin, supportedSeries, err := resolveCharm(charmsAPIClient, charmURL, origin)
+	//resolvedURL, resolvedOrigin, supportedSeries, err := resolveCharm(charmsAPIClient, charmURL, origin)
+	_, resolvedOrigin, _, err := resolveCharm(charmsAPIClient, charmURL, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -263,18 +259,18 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 		return nil, jujuerrors.NotSupportedf("deploying bundles")
 	}
 
-	seriesToUse, err := c.seriesToUse(modelconfigAPIClient, userSuppliedSeries, resolvedOrigin.Series, set.NewStrings(supportedSeries...))
-	if err != nil {
-		return nil, err
-	}
-	if userSuppliedSeries != "" && seriesToUse != userSuppliedSeries {
-		// Ignore errors, the series have already been vetted above.
-		userBase, _ := series.GetBaseFromSeries(userSuppliedSeries)
-		suggestedBase, _ := series.GetBaseFromSeries(seriesToUse)
-		return nil, jujuerrors.Errorf(
-			"juju bug (LP 2039179), requested base %q does not match base %q found for charm.",
-			userBase, suggestedBase)
-	}
+	//seriesToUse, err := c.seriesToUse(modelconfigAPIClient, userSuppliedSeries, resolvedOrigin.Series, set.NewStrings(supportedSeries...))
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if userSuppliedSeries != "" && seriesToUse != userSuppliedSeries {
+	//	// Ignore errors, the series have already been vetted above.
+	//	userBase, _ := series.GetBaseFromSeries(userSuppliedSeries)
+	//	suggestedBase, _ := series.GetBaseFromSeries(seriesToUse)
+	//	return nil, jujuerrors.Errorf(
+	//		"juju bug (LP 2039179), requested base %q does not match base %q found for charm.",
+	//		userBase, suggestedBase)
+	//}
 
 	appConfig := input.Config
 	if appConfig == nil {
@@ -300,8 +296,8 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	}
 
 	// Add the charm to the model
-	origin = resolvedOrigin.WithSeries(seriesToUse)
-	charmURL = resolvedURL.WithSeries(seriesToUse)
+	//origin = resolvedOrigin.WithSeries(seriesToUse)
+	//charmURL = resolvedURL.WithSeries(seriesToUse)
 
 	// If a plan element, with RequiresReplace in the schema, is
 	// changed. Terraform calls the Destroy method then the Create
@@ -342,14 +338,11 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 				CharmID:         charmID,
 				ApplicationName: appName,
 				NumUnits:        input.Units,
-				// Still supply series, to be compatible with juju 2.9 controllers.
-				// 3.x controllers will only use the CharmOrigin and its base.
-				Series:      resultOrigin.Series,
-				CharmOrigin: resultOrigin,
-				Config:      appConfig,
-				Cons:        input.Constraints,
-				Resources:   resources,
-				Placement:   placements,
+				CharmOrigin:     resultOrigin,
+				Config:          appConfig,
+				Cons:            input.Constraints,
+				Resources:       resources,
+				Placement:       placements,
 			}
 			c.Tracef("Calling Deploy", map[string]interface{}{"args": args})
 			if err = applicationAPIClient.Deploy(args); err != nil {
@@ -383,9 +376,9 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	// If we have managed to deploy something, now we have
 	// to check if we have to expose something
 	err = c.processExpose(applicationAPIClient, appName, input.Expose)
-	return &CreateApplicationResponse{
-		AppName: appName,
-	}, err
+	return &CreateApplicationResponse{}, nil
+	//	AppName: appName,
+	//}, err
 }
 
 // supportedWorkloadSeries returns a slice of supported workload series
@@ -414,15 +407,16 @@ func (c applicationsClient) supportedWorkloadSeries(imageStream string) (set.Str
 		return nil, info[0].Error
 	}
 
-	supportedSeries, err := series.WorkloadSeries(time.Now(), "", imageStream)
-	if err != nil {
-		return nil, err
-	}
-	if info[0].Result.AgentVersion.Major > 2 {
-		unsupported := set.NewStrings("bionic", "trusty", "windows", "xenial", "centos7", "precise")
-		supportedSeries = supportedSeries.Difference(unsupported)
-	}
-	return supportedSeries, nil
+	//supportedSeries, err := series.WorkloadSeries(time.Now(), "", imageStream)
+	//if err != nil {
+	//	return nil, err
+	//}
+	//if info[0].Result.AgentVersion.Major > 2 {
+	//	unsupported := set.NewStrings("bionic", "trusty", "windows", "xenial", "centos7", "precise")
+	//	supportedSeries = supportedSeries.Difference(unsupported)
+	//}
+	//return supportedSeries, nil
+	return set.NewStrings(), nil
 }
 
 // seriesToUse selects a series to deploy a charm with based on the following
@@ -470,13 +464,13 @@ func (c applicationsClient) seriesToUse(modelconfigAPIClient *apimodelconfig.Cli
 
 	// If a default series is explicitly defined for the model,
 	// use that if a supportedSeries.
-	defaultSeries, explicit := modelConfig.DefaultSeries()
-	if explicit {
-		useSeries, err := charm.SeriesForCharm(defaultSeries, supportedSeries.Values())
-		if err == nil {
-			return useSeries, nil
-		}
-	}
+	//defaultSeries, explicit := modelConfig.DefaultSeries()
+	//if explicit {
+	//	useSeries, err := charm.SeriesForCharm(defaultSeries, supportedSeries.Values())
+	//	if err == nil {
+	//		return useSeries, nil
+	//	}
+	//}
 
 	// If a suggested series is in the supportedSeries list, use it.
 	useSeries, err := charm.SeriesForCharm(suggestedSeries, supportedSeries.Values())
@@ -613,7 +607,7 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 	defer func() { _ = conn.Close() }()
 
 	applicationAPIClient := apiapplication.NewClient(conn)
-	clientAPIClient := apiclient.NewClient(conn)
+	clientAPIClient := apiclient.NewClient(conn, c.JujuLogger())
 
 	apps, err := applicationAPIClient.ApplicationsInfo([]names.ApplicationTag{names.NewApplicationTag(input.AppName)})
 	if err != nil {
@@ -765,17 +759,17 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 	// ParseChannel to send back a base without the risk.
 	// Having the risk will cause issues with the provider
 	// saving a different value than the user did.
-	baseChannel, err := series.ParseChannel(appInfo.Base.Channel)
+	baseChannel, err := base.ParseChannel(appInfo.Base.Channel)
 	if err != nil {
 		return nil, jujuerrors.Annotate(err, "failed parse channel for base")
 	}
 
 	response := &ReadApplicationResponse{
-		Name:        charmURL.Name,
-		Channel:     appInfo.Channel,
-		Revision:    charmURL.Revision,
-		Base:        fmt.Sprintf("%s@%s", appInfo.Base.Name, baseChannel.Track),
-		Series:      appInfo.Series,
+		Name:     charmURL.Name,
+		Channel:  appInfo.Channel,
+		Revision: charmURL.Revision,
+		Base:     fmt.Sprintf("%s@%s", appInfo.Base.Name, baseChannel.Track),
+		// Series:
 		Units:       unitCount,
 		Trust:       trustValue,
 		Expose:      exposed,
@@ -810,7 +804,7 @@ func (c applicationsClient) UpdateApplication(input *UpdateApplicationInput) err
 
 	applicationAPIClient := apiapplication.NewClient(conn)
 	charmsAPIClient := apicharms.NewClient(conn)
-	clientAPIClient := apiclient.NewClient(conn)
+	clientAPIClient := apiclient.NewClient(conn, c.JujuLogger())
 
 	resourcesAPIClient, err := apiresources.NewClient(conn)
 	if err != nil {
@@ -1032,19 +1026,19 @@ func (c applicationsClient) computeSetCharmConfig(
 	return &toReturn, nil
 }
 
-func resolveCharm(charmsAPIClient *apicharms.Client, curl *charm.URL, origin apicommoncharm.Origin) (*charm.URL, apicommoncharm.Origin, []string, error) {
+func resolveCharm(charmsAPIClient *apicharms.Client, curl *charm.URL, origin apicommoncharm.Origin) (*charm.URL, apicommoncharm.Origin, []base.Base, error) {
 	// Charm or bundle has been supplied as a URL so we resolve and
 	// deploy using the store but pass in the origin command line
 	// argument so users can target a specific origin.
 	resolved, err := charmsAPIClient.ResolveCharms([]apicharms.CharmToResolve{{URL: curl, Origin: origin}})
 	if err != nil {
-		return nil, apicommoncharm.Origin{}, []string{}, err
+		return nil, apicommoncharm.Origin{}, []base.Base{}, err
 	}
 	if len(resolved) != 1 {
-		return nil, apicommoncharm.Origin{}, []string{}, fmt.Errorf("expected only one resolution, received %d", len(resolved))
+		return nil, apicommoncharm.Origin{}, []base.Base{}, fmt.Errorf("expected only one resolution, received %d", len(resolved))
 	}
 	resolvedCharm := resolved[0]
-	return resolvedCharm.URL, resolvedCharm.Origin, resolvedCharm.SupportedSeries, resolvedCharm.Error
+	return resolvedCharm.URL, resolvedCharm.Origin, resolvedCharm.SupportedBases, resolvedCharm.Error
 }
 
 func strPtr(in string) *string {
@@ -1096,8 +1090,7 @@ func addPendingResources(appName string, resourcesToBeAdded map[string]charmreso
 			URL:    charmID.URL,
 			Origin: charmID.Origin,
 		},
-		CharmStoreMacaroon: nil,
-		Resources:          pendingResources,
+		Resources: pendingResources,
 	}
 
 	toRequest, err := resourcesAPIClient.AddPendingResources(resourcesReq)

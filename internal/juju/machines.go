@@ -15,9 +15,9 @@ import (
 	apimachinemanager "github.com/juju/juju/api/client/machinemanager"
 	apimodelconfig "github.com/juju/juju/api/client/modelconfig"
 	"github.com/juju/juju/cmd/juju/common"
+	"github.com/juju/juju/core/base"
 	"github.com/juju/juju/core/constraints"
 	"github.com/juju/juju/core/model"
-	"github.com/juju/juju/core/series"
 	"github.com/juju/juju/environs/config"
 	"github.com/juju/juju/environs/manual"
 	"github.com/juju/juju/environs/manual/sshprovisioner"
@@ -159,18 +159,19 @@ func baseFromOperatingSystem(opSys string) (*params.Base, error) {
 		return nil, nil
 	}
 	// opSys is a base or a series, check base first.
-	info, err := series.ParseBaseFromString(opSys)
+	info, err := base.ParseBaseFromString(opSys)
 	if err != nil {
-		info, err = series.GetBaseFromSeries(opSys)
+		info, err = base.GetBaseFromSeries(opSys)
 		if err != nil {
 			return nil, errors.NotValidf("Base or Series %q", opSys)
 		}
 	}
 	base := &params.Base{
-		Name:    info.Name,
+		Name:    info.OS,
 		Channel: info.Channel.String(),
 	}
-	base.Channel = series.FromLegacyCentosChannel(base.Channel)
+	// HEATHER fix me
+	//base.Channel = base.FromLegacyCentosChannel(base.Channel)
 	return base, nil
 }
 
@@ -241,7 +242,7 @@ func (c machinesClient) ReadMachine(input ReadMachineInput) (ReadMachineResponse
 	}
 	defer func() { _ = conn.Close() }()
 
-	clientAPIClient := apiclient.NewClient(conn)
+	clientAPIClient := apiclient.NewClient(conn, c.JujuLogger())
 
 	status, err := clientAPIClient.Status(nil)
 	if err != nil {
@@ -253,17 +254,20 @@ func (c machinesClient) ReadMachine(input ReadMachineInput) (ReadMachineResponse
 		return response, fmt.Errorf("no status returned for machine: %s", input.ID)
 	}
 	response.ID = machineStatus.Id
-	channel, err := series.ParseChannel(machineStatus.Base.Channel)
+	channel, err := base.ParseChannel(machineStatus.Base.Channel)
 	if err != nil {
 		return response, err
 	}
-	// This might cause problems later, but today, no one except for juju internals
-	// uses the channel risk. Using the risk makes the base appear to have changed
-	// with terraform.
+	//This might cause problems later, but today, no one except for juju internals
+	//uses the channel risk. Using the risk makes the base appear to have changed
+	//with terraform.
 	response.Base = fmt.Sprintf("%s@%s", machineStatus.Base.Name, channel.Track)
-	response.Series = machineStatus.Series
+	// HEATHER fix me
+	//response.Series, err = base.GetSeriesFromBase(machineStatus.Base)
 	response.Constraints = machineStatus.Constraints
-
+	if err != nil {
+		return response, err
+	}
 	return response, nil
 }
 
@@ -276,7 +280,7 @@ func (c machinesClient) DestroyMachine(input *DestroyMachineInput) error {
 
 	machineAPIClient := apimachinemanager.NewClient(conn)
 
-	_, err = machineAPIClient.DestroyMachinesWithParams(false, false, (*time.Duration)(nil), input.ID)
+	_, err = machineAPIClient.DestroyMachinesWithParams(false, false, false, (*time.Duration)(nil), input.ID)
 
 	if err != nil {
 		return err
