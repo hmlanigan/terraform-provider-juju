@@ -29,7 +29,6 @@ import (
 	apicharms "github.com/juju/juju/api/client/charms"
 	apiclient "github.com/juju/juju/api/client/client"
 	apimodelconfig "github.com/juju/juju/api/client/modelconfig"
-	"github.com/juju/juju/api/client/modelmanager"
 	apiresources "github.com/juju/juju/api/client/resources"
 	apicommoncharm "github.com/juju/juju/api/common/charm"
 	"github.com/juju/juju/cmd/juju/application/utils"
@@ -239,8 +238,16 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	if input.CharmRevision != UnspecifiedRevision {
 		urlForOrigin = urlForOrigin.WithRevision(input.CharmRevision)
 	}
-	// HEATHER fix me
-	//urlForOrigin = urlForOrigin.WithSeries(userSuppliedSeries)
+
+	// Juju 2.9 cares that the series is in the origin. Juju 3.3 does not.
+	// We are supporting both now.
+	if !userSuppliedBase.Empty() {
+		userSuppliedSeries, err := base.GetSeriesFromBase(userSuppliedBase)
+		if err != nil {
+			return nil, err
+		}
+		urlForOrigin = urlForOrigin.WithSeries(userSuppliedSeries)
+	}
 
 	origin, err := utils.DeduceOrigin(urlForOrigin, channel, platform)
 	if err != nil {
@@ -250,8 +257,7 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	// Charm or bundle has been supplied as a URL so we resolve and
 	// deploy using the store but pass in the origin command line
 	// argument so users can target a specific origin.
-	//resolvedURL, resolvedOrigin, supportedSeries, err := resolveCharm(charmsAPIClient, charmURL, origin)
-	_, resolvedOrigin, _, err := resolveCharm(charmsAPIClient, charmURL, origin)
+	resolvedURL, resolvedOrigin, supportedBases, err := resolveCharm(charmsAPIClient, charmURL, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -259,18 +265,15 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 		return nil, jujuerrors.NotSupportedf("deploying bundles")
 	}
 
-	//seriesToUse, err := c.seriesToUse(modelconfigAPIClient, userSuppliedSeries, resolvedOrigin.Series, set.NewStrings(supportedSeries...))
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if userSuppliedSeries != "" && seriesToUse != userSuppliedSeries {
-	//	// Ignore errors, the series have already been vetted above.
-	//	userBase, _ := series.GetBaseFromSeries(userSuppliedSeries)
-	//	suggestedBase, _ := series.GetBaseFromSeries(seriesToUse)
-	//	return nil, jujuerrors.Errorf(
-	//		"juju bug (LP 2039179), requested base %q does not match base %q found for charm.",
-	//		userBase, suggestedBase)
-	//}
+	baseToUse, err := c.baseToUse(modelconfigAPIClient, userSuppliedBase, resolvedOrigin.Base, supportedBases)
+	if err != nil {
+		return nil, err
+	}
+	if !userSuppliedBase.IsCompatible(baseToUse) {
+		return nil, jujuerrors.Errorf(
+			"juju bug (LP 2039179), requested base %q does not match base %q found for charm.",
+			userSuppliedBase, baseToUse)
+	}
 
 	appConfig := input.Config
 	if appConfig == nil {
@@ -294,10 +297,6 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 			placements = append(placements, appPlacement)
 		}
 	}
-
-	// Add the charm to the model
-	//origin = resolvedOrigin.WithSeries(seriesToUse)
-	//charmURL = resolvedURL.WithSeries(seriesToUse)
 
 	// If a plan element, with RequiresReplace in the schema, is
 	// changed. Terraform calls the Destroy method then the Create
@@ -325,7 +324,7 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 			}
 
 			charmID := apiapplication.CharmID{
-				URL:    charmURL,
+				URL:    resolvedURL,
 				Origin: resultOrigin,
 			}
 
@@ -376,113 +375,111 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	// If we have managed to deploy something, now we have
 	// to check if we have to expose something
 	err = c.processExpose(applicationAPIClient, appName, input.Expose)
-	return &CreateApplicationResponse{}, nil
-	//	AppName: appName,
-	//}, err
+	return &CreateApplicationResponse{
+		AppName: appName,
+	}, err
 }
 
-// supportedWorkloadSeries returns a slice of supported workload series
+// supportedWorkloadBase returns a slice of supported workload base
 // depending on the controller agent version. This provider currently
-// uses juju 2.9.45 code. However the supported workload series list is
+// uses juju 3.3.0 code. However, the supported workload base list is
 // different between juju 2 and juju 3. Handle that here.
-func (c applicationsClient) supportedWorkloadSeries(imageStream string) (set.Strings, error) {
+func (c applicationsClient) supportedWorkloadBase(imageStream string) ([]base.Base, error) {
 	conn, err := c.GetConnection(nil)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = conn.Close() }()
 
-	modelManagerAPIClient := modelmanager.NewClient(conn)
+	// controllerVersion always set, as we've one a login.
+	controllerVersion, _ := conn.ServerVersion()
+	_ = conn.Close()
 
-	uuid, err := c.ModelUUID("controller")
+	supportedBases, err := base.WorkloadBases(time.Now(), base.Base{}, imageStream)
 	if err != nil {
 		return nil, err
 	}
-
-	info, err := modelManagerAPIClient.ModelInfo([]names.ModelTag{names.NewModelTag(uuid)})
-	if err != nil {
-		return nil, err
+	if controllerVersion.Major > 2 {
+		unsupported := []base.Base{
+			{OS: "ubuntu", Channel: base.Channel{Track: "18.04"}}, // bionic
+			{OS: "ubuntu", Channel: base.Channel{Track: "16.04"}}, // xenial
+			{OS: "ubuntu", Channel: base.Channel{Track: "14.04"}}, // trusty
+			{OS: "ubuntu", Channel: base.Channel{Track: "12.04"}}, // precise
+			{OS: "windows"},
+			{OS: "centos", Channel: base.Channel{Track: "7"}}, // centos7
+		}
+		supportedBases = differenceOfBases(supportedBases, unsupported)
 	}
-	if info[0].Error != nil {
-		return nil, info[0].Error
-	}
-
-	//supportedSeries, err := series.WorkloadSeries(time.Now(), "", imageStream)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//if info[0].Result.AgentVersion.Major > 2 {
-	//	unsupported := set.NewStrings("bionic", "trusty", "windows", "xenial", "centos7", "precise")
-	//	supportedSeries = supportedSeries.Difference(unsupported)
-	//}
-	//return supportedSeries, nil
-	return set.NewStrings(), nil
+	return supportedBases, nil
 }
 
-// seriesToUse selects a series to deploy a charm with based on the following
+// baseToUse selects a base to deploy a charm with based on the following
 // criteria
-//   - A user specified series must be supported by the charm and a valid juju
-//     supported workload series. If so, use that, otherwise if an input series
+//   - A user specified base must be supported by the charm and a valid juju
+//     supported workload base. If so, use that, otherwise if an input base
 //     is provided, return an error.
-//   - Next check DefaultSeries from model config. If explicitly defined by the
+//   - Next check DefaultBase from model config. If explicitly defined by the
 //     user, check against charm and juju supported workloads. Use that if in
 //     both lists.
-//   - Third check the suggested series against just supported workload series.
+//   - Third check the suggested base against just supported workload series.
 //     It has already been checked against charm series.
 //
-// Note, we are re-implementing the logic of series_selector in juju code as it's
+// Note, we are re-implementing the logic of base_selector in juju code as it's
 // a private object.
-func (c applicationsClient) seriesToUse(modelconfigAPIClient *apimodelconfig.Client, inputSeries, suggestedSeries string, charmSeries set.Strings) (string, error) {
-	c.Tracef("seriesToUse", map[string]interface{}{"inputSeries": inputSeries, "suggestedSeries": suggestedSeries, "charmSeries": charmSeries.Values()})
+func (c applicationsClient) baseToUse(modelconfigAPIClient *apimodelconfig.Client, inputBase, suggestedBase base.Base, charmBases []base.Base) (base.Base, error) {
+	c.Tracef("baseToUse", map[string]interface{}{"inputBase": inputBase, "suggestedBase": suggestedBase, "charmBases": charmBases})
 
 	attrs, err := modelconfigAPIClient.ModelGet()
 	if err != nil {
-		return "", jujuerrors.Wrap(err, errors.New("cannot fetch model settings"))
+		return base.Base{}, jujuerrors.Wrap(err, errors.New("cannot fetch model settings"))
 	}
 	modelConfig, err := config.New(config.NoDefaults, attrs)
 	if err != nil {
-		return "", err
+		return base.Base{}, err
 	}
 
-	supportedWorkloadSeries, err := c.supportedWorkloadSeries(modelConfig.ImageStream())
+	supportedWorkloadBases, err := c.supportedWorkloadBase(modelConfig.ImageStream())
 	if err != nil {
-		return "", err
+		return base.Base{}, err
 	}
 
-	// If the inputSeries is supported by the charm and is a supported
+	// If the inputBase is supported by the charm and is a supported
 	// workload series, use that.
-	if charmSeries.Contains(inputSeries) && supportedWorkloadSeries.Contains(inputSeries) {
-		return suggestedSeries, nil
-	} else if inputSeries != "" {
-		return "", jujuerrors.NewNotSupported(nil,
-			fmt.Sprintf("series %q either not supported by the charm, or an unsupported juju workload series with the current version of juju.", inputSeries))
+	if basesContain(inputBase, charmBases) && basesContain(inputBase, supportedWorkloadBases) {
+		return suggestedBase, nil
+	} else if !inputBase.Empty() {
+		return base.Base{}, jujuerrors.NewNotSupported(nil,
+			fmt.Sprintf("base %q either not supported by the charm, or an unsupported juju workload base with the current version of juju.", inputBase))
 	}
 
-	// We can choose from a list of series, supported both as a
-	// workload series and the by charm.
-	supportedSeries := charmSeries.Intersection(supportedWorkloadSeries)
+	// We can choose from a list of bases, supported both as
+	// workload bases and by the charm.
+	supportedBases := intersectionOfBases(charmBases, supportedWorkloadBases)
 
-	// If a default series is explicitly defined for the model,
-	// use that if a supportedSeries.
-	//defaultSeries, explicit := modelConfig.DefaultSeries()
-	//if explicit {
-	//	useSeries, err := charm.SeriesForCharm(defaultSeries, supportedSeries.Values())
-	//	if err == nil {
-	//		return useSeries, nil
-	//	}
-	//}
-
-	// If a suggested series is in the supportedSeries list, use it.
-	useSeries, err := charm.SeriesForCharm(suggestedSeries, supportedSeries.Values())
-	if err == nil {
-		return useSeries, nil
+	// If a default base is explicitly defined for the model,
+	// use that if a supportedBase.
+	defaultBaseString, explicit := modelConfig.DefaultBase()
+	if explicit {
+		defaultBase, err := base.ParseBaseFromString(defaultBaseString)
+		if err != nil {
+			return base.Base{}, err
+		}
+		if basesContain(defaultBase, supportedBases) {
+			return defaultBase, nil
+		}
 	}
 
-	// Note: This DefaultSupportedLTS is specific to juju 2.9.45
-	lts := version.DefaultSupportedLTS()
+	// If a suggested base is in the supportedBases list, use it.
+	if basesContain(suggestedBase, supportedBases) {
+		return suggestedBase, nil
+	}
 
-	// Select an actually supported series
-	return charm.SeriesForCharm(lts, supportedSeries.Values())
+	// Note: This DefaultSupportedLTSBase is specific to juju 3.3.0
+	lts := version.DefaultSupportedLTSBase()
+	if basesContain(lts, supportedBases) {
+		return lts, nil
+	}
+
+	return base.Base{}, jujuerrors.NotFoundf("appropriate base to deploy the charm")
 }
 
 // processExpose is a local function that executes an expose request.
@@ -763,13 +760,16 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 	if err != nil {
 		return nil, jujuerrors.Annotate(err, "failed parse channel for base")
 	}
-
+	seriesString, err := base.GetSeriesFromChannel(appInfo.Base.Name, baseChannel.Track)
+	if err != nil {
+		return nil, jujuerrors.Annotate(err, "failed to get series from base")
+	}
 	response := &ReadApplicationResponse{
-		Name:     charmURL.Name,
-		Channel:  appInfo.Channel,
-		Revision: charmURL.Revision,
-		Base:     fmt.Sprintf("%s@%s", appInfo.Base.Name, baseChannel.Track),
-		// Series:
+		Name:        charmURL.Name,
+		Channel:     appInfo.Channel,
+		Revision:    charmURL.Revision,
+		Base:        fmt.Sprintf("%s@%s", appInfo.Base.Name, baseChannel.Track),
+		Series:      seriesString,
 		Units:       unitCount,
 		Trust:       trustValue,
 		Expose:      exposed,

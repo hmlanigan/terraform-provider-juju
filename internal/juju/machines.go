@@ -170,9 +170,15 @@ func baseFromOperatingSystem(opSys string) (*params.Base, error) {
 		Name:    info.OS,
 		Channel: info.Channel.String(),
 	}
-	// HEATHER fix me
-	//base.Channel = base.FromLegacyCentosChannel(base.Channel)
+	base.Channel = fromLegacyCentosChannel(base.Channel)
 	return base, nil
+}
+
+func fromLegacyCentosChannel(series string) string {
+	if strings.HasPrefix(series, "centos") {
+		return strings.TrimLeft(series, "centos")
+	}
+	return series
 }
 
 // manualProvision calls the sshprovisioner.ProvisionMachine on the Juju side
@@ -258,16 +264,15 @@ func (c machinesClient) ReadMachine(input ReadMachineInput) (ReadMachineResponse
 	if err != nil {
 		return response, err
 	}
-	//This might cause problems later, but today, no one except for juju internals
-	//uses the channel risk. Using the risk makes the base appear to have changed
-	//with terraform.
+	// This might cause problems later, but today, no one except for juju internals
+	// uses the channel risk. Using the risk makes the base appear to have changed
+	// with terraform.
 	response.Base = fmt.Sprintf("%s@%s", machineStatus.Base.Name, channel.Track)
-	// HEATHER fix me
-	//response.Series, err = base.GetSeriesFromBase(machineStatus.Base)
-	response.Constraints = machineStatus.Constraints
+	response.Series, err = base.GetSeriesFromChannel(machineStatus.Base.Name, machineStatus.Base.Channel)
 	if err != nil {
 		return response, err
 	}
+	response.Constraints = machineStatus.Constraints
 	return response, nil
 }
 
