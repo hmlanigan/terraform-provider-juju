@@ -28,7 +28,7 @@ _Note:_ These features may not have functional parity with the juju cli at this 
 ## Requirements
 
 - [Terraform](https://www.terraform.io/downloads.html) >= 1.5
-- [Go](https://golang.org/doc/install) >= 1.20
+- [Go](https://golang.org/doc/install) >= 1.21
 
 ## Building The Provider
 
