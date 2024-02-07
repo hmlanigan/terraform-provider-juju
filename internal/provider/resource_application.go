@@ -416,7 +416,10 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read application, got error: %s", err))
 		return
 	}
-	r.trace(fmt.Sprintf("read application resource %q", createResp.AppName))
+	r.trace(fmt.Sprintf("read application resource %q", createResp.AppName), map[string]interface{}{"response": readResp})
+	if readResp.Placement == "" {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("%+v", readResp))
+	}
 
 	// Save plan into Terraform state
 	plan.Constraints = types.StringValue(readResp.Constraints.String())

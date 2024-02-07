@@ -667,20 +667,28 @@ func (c applicationsClient) processResources(charmsAPIClient *apicharms.Client, 
 // not found. Delay indicates how long to wait between attempts.
 func (c applicationsClient) ReadApplicationWithRetryOnNotFound(ctx context.Context, input *ReadApplicationInput) (*ReadApplicationResponse, error) {
 	var output *ReadApplicationResponse
-	err := retry.Call(retry.CallArgs{
+	modelType, err := c.ModelType(input.ModelName)
+	if err != nil {
+		return nil, jujuerrors.Annotatef(err, "getting model type")
+	}
+	err = retry.Call(retry.CallArgs{
 		Func: func() error {
 			var err error
 			output, err = c.ReadApplication(input)
 			if errors.As(err, &ApplicationNotFoundError) {
 				return nil
 			}
+			if modelType == model.IAAS {
+				return fmt.Errorf("heather A %+v", output)
+			}
 			machines := strings.Split(output.Placement, ",")
 			// Ensure all machine placement for Principal applications are
 			// found before returning.
-			if output.Principal && len(machines) != output.Units {
+			if modelType == model.IAAS && output.Principal && len(machines) != output.Units {
+				//return fmt.Errorf("heather B %+v", machines)
 				return nil
 			}
-			// NOTE: A subordinate should also have machines. However, they
+			// NOTE: An IAAS subordinate should also have machines. However, they
 			// will not be listed until after the relation has been created.
 			// Those happen with the integration resource which will not be
 			// run by terraform before the application resource finishes. Thus
