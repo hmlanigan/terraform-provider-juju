@@ -674,6 +674,17 @@ func (c applicationsClient) ReadApplicationWithRetryOnNotFound(ctx context.Conte
 			if errors.As(err, &ApplicationNotFoundError) {
 				return nil
 			}
+			machines := strings.Split(output.Placement, ",")
+			// Ensure all machine placement for Principal applications are
+			// found before returning.
+			if output.Principal && len(machines) != output.Units {
+				return nil
+			}
+			// NOTE: A subordinate should also have machines. However, they
+			// will not be listed until after the relation has been created.
+			// Those happen with the integration resource which will not be
+			// run by terraform before the application resource finishes. Thus
+			// do not block here for subordinates.
 			return err
 		},
 		NotifyFunc: func(err error, attempt int) {
