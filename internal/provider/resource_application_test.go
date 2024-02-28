@@ -147,6 +147,7 @@ func TestAcc_ResourceApplication_UpdatesRevisionConfig(t *testing.T) {
 	}
 	modelName := acctest.RandomWithPrefix("tf-test-application")
 	appName := "github-runner"
+	configParamName := "runner-storage"
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
@@ -161,9 +162,10 @@ func TestAcc_ResourceApplication_UpdatesRevisionConfig(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccResourceApplicationWithRevisionAndConfig(modelName, appName, 95, ""),
+				Config: testAccResourceApplicationWithRevisionAndConfig(modelName, appName, 95, configParamName),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("juju_application."+appName, "charm.0.revision", "95"),
+					resource.TestCheckResourceAttr("juju_application."+appName, "config."+configParamName, configParamName+"-value"),
 				),
 			},
 		},

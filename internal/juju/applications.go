@@ -919,6 +919,20 @@ func (c applicationsClient) UpdateApplication(input *UpdateApplicationInput) err
 		return fmt.Errorf("no status returned for application: %s", input.AppName)
 	}
 
+	// Use the revision and channel info to create the
+	// corresponding SetCharm info.
+	if input.Revision != nil || input.Channel != "" {
+		setCharmConfig, err := c.computeSetCharmConfig(input, applicationAPIClient, charmsAPIClient, resourcesAPIClient)
+		if err != nil {
+			return err
+		}
+
+		err = applicationAPIClient.SetCharm(model.GenerationMaster, *setCharmConfig)
+		if err != nil {
+			return err
+		}
+	}
+
 	// process configuration
 	var auxConfig map[string]string
 	if input.Config != nil {
@@ -1017,20 +1031,6 @@ func (c applicationsClient) UpdateApplication(input *UpdateApplicationInput) err
 					return err
 				}
 			}
-		}
-	}
-
-	// Use the revision and channel info to create the
-	// corresponding SetCharm info.
-	if input.Revision != nil || input.Channel != "" {
-		setCharmConfig, err := c.computeSetCharmConfig(input, applicationAPIClient, charmsAPIClient, resourcesAPIClient)
-		if err != nil {
-			return err
-		}
-
-		err = applicationAPIClient.SetCharm(model.GenerationMaster, *setCharmConfig)
-		if err != nil {
-			return err
 		}
 	}
 
