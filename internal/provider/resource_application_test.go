@@ -372,6 +372,49 @@ func TestAcc_ResourceApplication_Minimal(t *testing.T) {
 	})
 }
 
+func TestAcc_ResourceApplication_MinimalMultiMachines(t *testing.T) {
+	if testingCloud == MicroK8sTesting {
+		t.Skipf("Testing machine order, machines don't exist with k8s")
+	}
+	modelName := acctest.RandomWithPrefix("tf-test-application")
+	charmName := "juju-qa-test"
+	resourceName := "juju_application.testapp"
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: frameworkProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+resource "juju_model" "testmodel" {
+  name = %q
+}
+
+resource "juju_application" "testapp" {
+  model = juju_model.testmodel.name
+  units = 4
+  charm {
+    name = %q
+  }
+}
+`,
+					modelName, charmName),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr(resourceName, "model", modelName),
+					resource.TestCheckResourceAttr(resourceName, "name", charmName),
+					resource.TestCheckResourceAttr(resourceName, "charm.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "charm.0.name", charmName),
+					resource.TestCheckResourceAttr(resourceName, "placement", "0,1,2,3"),
+				),
+			},
+			{
+				ImportStateVerify: true,
+				ImportState:       true,
+				ResourceName:      resourceName,
+			},
+		},
+	})
+}
+
 func TestAcc_ResourceApplication_UpgradeProvider(t *testing.T) {
 	modelName := acctest.RandomWithPrefix("tf-test-application")
 	appName := "test-app"

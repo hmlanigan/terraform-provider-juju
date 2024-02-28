@@ -174,7 +174,11 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Optional:    true,
 				Computed:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplaceIfConfigured(),
+					stringplanmodifier.RequiresReplaceIf(
+						orderIndependentRequiresReplace,
+						orderIndependentRequiresReplaceDescription,
+						orderIndependentRequiresReplaceMarkdownDescription,
+					),
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
