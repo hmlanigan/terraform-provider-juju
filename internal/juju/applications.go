@@ -685,26 +685,25 @@ func (c applicationsClient) ReadApplicationWithRetryOnNotFound(ctx context.Conte
 			var err error
 			output, err = c.ReadApplication(input)
 			if errors.As(err, &ApplicationNotFoundError) {
+				return err
+			} else if err != nil {
 				return nil
-			}
-			if modelType == model.IAAS {
-				return fmt.Errorf("heather A %+v", output)
 			}
 			machines := strings.Split(output.Placement, ",")
 			// Ensure all machine placement for Principal applications are
 			// found before returning.
 			if modelType == model.IAAS && output.Principal && len(machines) != output.Units {
-				//return fmt.Errorf("heather B %+v", machines)
-				return nil
+				return fmt.Errorf("need %d machines, have %d", output.Units, len(machines))
 			}
 			// NOTE: An IAAS subordinate should also have machines. However, they
 			// will not be listed until after the relation has been created.
 			// Those happen with the integration resource which will not be
 			// run by terraform before the application resource finishes. Thus
 			// do not block here for subordinates.
-			return err
+			return nil
 		},
 		NotifyFunc: func(err error, attempt int) {
+			c.Tracef(fmt.Sprintf("attempt %d: %+v", attempt, err))
 			if attempt%4 == 0 {
 				message := fmt.Sprintf("waiting for application %q", input.AppName)
 				if attempt != 4 {
@@ -741,28 +740,15 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 		return nil, fmt.Errorf("more than one result for application: %s", input.AppName)
 	}
 	if len(apps) < 1 {
-		return nil, fmt.Errorf("no results for application: %s", input.AppName)
-		//return nil, &applicationNotFoundError{input.AppName}
+		return nil, &applicationNotFoundError{input.AppName}
 	}
 	if apps[0].Error != nil {
+		// Return applicationNotFoundError to trigger retry.
+		c.Debugf("Actual error from ApplicationsInfo", map[string]interface{}{"err": apps[0].Error})
 		return nil, &applicationNotFoundError{input.AppName}
 	}
 
 	appInfo := apps[0].Result
-
-	//var appConstraints constraints.Value = constraints.Value{}
-	// constraints do not apply to subordinate applications.
-	//if appInfo.Principal {
-	//	queryConstraints, err := applicationAPIClient.GetConstraints(input.AppName)
-	//	if err != nil {
-	//		c.Errorf(err, "found when querying the application constraints")
-	//		return nil, err
-	//	}
-	//	if len(queryConstraints) != 1 {
-	//		return nil, fmt.Errorf("expected one set of application constraints, received %d", len(queryConstraints))
-	//	}
-	//	appConstraints = queryConstraints[0]
-	//}
 
 	status, err := clientAPIClient.Status(nil)
 	if err != nil {
