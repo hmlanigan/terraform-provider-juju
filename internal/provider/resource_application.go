@@ -417,7 +417,7 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 	r.trace(fmt.Sprintf("read application resource %q", createResp.AppName), map[string]interface{}{"response": readResp})
-	if readResp.Placement == "" {
+	if readResp.Placement == "" && readResp.Principal {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("%+v", readResp))
 	}
 

@@ -472,9 +472,8 @@ func (c applicationsClient) legacyDeploy(ctx context.Context, conn api.Connectio
 			return !errors.Is(err, jujuerrors.NotFound) && !errors.Is(err, jujuerrors.AlreadyExists)
 		},
 		NotifyFunc: func(err error, attempt int) {
-			c.Errorf(err, fmt.Sprintf("deploy application %q retry", transformedInput.applicationName))
 			message := fmt.Sprintf("waiting for application %q deploy, attempt %d", transformedInput.applicationName, attempt)
-			c.Debugf(message)
+			c.Debugf(message, map[string]interface{}{"err": err})
 		},
 		BackoffFunc: retry.DoubleDelay,
 		Attempts:    30,
@@ -683,33 +682,52 @@ func (c applicationsClient) ReadApplicationWithRetryOnNotFound(ctx context.Conte
 	err = retry.Call(retry.CallArgs{
 		Func: func() error {
 			var err error
+			c.Tracef("ReadApplication with retry", map[string]interface{}{"input": input})
 			output, err = c.ReadApplication(input)
 			if errors.As(err, &ApplicationNotFoundError) {
 				return err
 			} else if err != nil {
+				c.Errorf(err, fmt.Sprintf("ReadApplication with retry %q", input.AppName))
 				return nil
+			}
+			if modelType != model.IAAS || !output.Principal || output.Units == 0 {
+				c.Tracef("ReadApplication with retry - returning", map[string]interface{}{"output": output})
+				return nil
+			}
+			if output.Placement == "" {
+				return fmt.Errorf("ReadApplicationWithRetryOnNotFound: no machines found in output")
 			}
 			machines := strings.Split(output.Placement, ",")
 			// Ensure all machine placement for Principal applications are
 			// found before returning.
-			if modelType == model.IAAS && output.Principal && len(machines) != output.Units {
-				return fmt.Errorf("need %d machines, have %d", output.Units, len(machines))
+			if len(machines) != output.Units {
+				return fmt.Errorf("ReadApplicationWithRetryOnNotFound: need %d machines, have %d", output.Units, len(machines))
 			}
 			// NOTE: An IAAS subordinate should also have machines. However, they
 			// will not be listed until after the relation has been created.
 			// Those happen with the integration resource which will not be
 			// run by terraform before the application resource finishes. Thus
 			// do not block here for subordinates.
+			c.Tracef("Have machines - returning", map[string]interface{}{"output": output})
 			return nil
 		},
+		//IsFatalError: func(err error) bool {
+		// If we hit AlreadyExists, it is from Deploy only under 2
+		// scenarios:
+		//   1. User error, the application has already been created?
+		//   2. We're replacing the application and tear down hasn't
+		//      finished yet, we should try again.
+		//return !errors.Is(err, jujuerrors.NotFound) && !errors.Is(err, jujuerrors.AlreadyExists)
+		//},
 		NotifyFunc: func(err error, attempt int) {
-			c.Tracef(fmt.Sprintf("attempt %d: %+v", attempt, err))
+			message := fmt.Sprintf("waiting for application %q deploy, attempt %d", input.AppName, attempt)
+			c.Tracef(message, map[string]interface{}{"err": err})
 			if attempt%4 == 0 {
 				message := fmt.Sprintf("waiting for application %q", input.AppName)
 				if attempt != 4 {
 					message = "still " + message
 				}
-				c.Debugf(message)
+				c.Debugf(message, map[string]interface{}{"err": err})
 			}
 		},
 		BackoffFunc: retry.DoubleDelay,
@@ -749,6 +767,7 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 	}
 
 	appInfo := apps[0].Result
+	c.Tracef("ApplicationsInfo", map[string]interface{}{"result": appInfo})
 
 	status, err := clientAPIClient.Status(nil)
 	if err != nil {
@@ -759,6 +778,7 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 	if appStatus, exists = status.Applications[input.AppName]; !exists {
 		return nil, fmt.Errorf("no status returned for application: %s", input.AppName)
 	}
+	c.Tracef("Status", map[string]interface{}{"result": status})
 
 	allocatedMachines := set.NewStrings()
 	for _, v := range appStatus.Units {
