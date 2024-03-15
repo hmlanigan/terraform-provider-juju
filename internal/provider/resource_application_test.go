@@ -389,12 +389,25 @@ resource "juju_model" "testmodel" {
   name = %q
 }
 
+resource "juju_machine" "one" {
+    base = "ubuntu@22.04"
+}
+
+resource "juju_machine" "two"{
+    base = "ubuntu@22.04"
+}
+
 resource "juju_application" "testapp" {
   model = juju_model.testmodel.name
   units = 4
+  placement = "1,0"
   charm {
     name = %q
+    base = "ubuntu@22.04"
   }
+}
+
+lifecycle {
 }
 `,
 					modelName, charmName),
