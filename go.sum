@@ -358,6 +358,8 @@ github.com/juju/juju v0.0.0-20240524040137-95c267441801 h1:5aNKt2VkNKsS2JI2QcCjN
 github.com/juju/juju v0.0.0-20240524040137-95c267441801/go.mod h1:dxhhMNnbWSXUB7EdQEsaxLhgwKQXo2Ctl4z4AZwWL88=
 github.com/juju/loggo v1.0.0 h1:Y6ZMQOGR9Aj3BGkiWx7HBbIx6zNwNkxhVNOHU2i1bl0=
 github.com/juju/loggo v1.0.0/go.mod h1:NIXFioti1SmKAlKNuUwbMenNdef59IF52+ZzuOmHYkg=
+github.com/juju/loggo/v2 v2.0.0 h1:PzyVIn+NgoZ22QUtPgKF/lh+6SnaCOEXhcP+sE4FhOk=
+github.com/juju/loggo/v2 v2.0.0/go.mod h1:647d6WvXBLj5lvka2qBvccr7vMIvF2KFkEH+0ZuFOUM=
 github.com/juju/lru v1.0.0 h1:FP8mBNF3jBnKwGO5PtsR+8iIegx8DREfhRhpcGpYcn4=
 github.com/juju/lru v1.0.0/go.mod h1:YauKGp6PAhOQyGuTOkiFdXVP1jR3vLkp/FI71GcpYcQ=
 github.com/juju/lumberjack/v2 v2.0.2 h1:FlxrR62Vb7FfN7jwpSBqqereyq5bBQUF0LqOhZ2VGeI=
@@ -400,14 +402,16 @@ github.com/juju/rpcreflect v1.2.0/go.mod h1:yWSyMkWOwQGqUVxvboHn1c3CuCQrQ5LgV//8
 github.com/juju/schema v1.0.0/go.mod h1:Y+ThzXpUJ0E7NYYocAbuvJ7vTivXfrof/IfRPq/0abI=
 github.com/juju/schema v1.2.0 h1:+XywM0pYzuhGebQiK1aR4Bj7Q7nLV5MihcOgq6dLLxs=
 github.com/juju/schema v1.2.0/go.mod h1:VdljuJLc45loM79LYm4yKKmPJwK1bPKRekvMVlfywU0=
-github.com/juju/testing v1.1.0 h1:+WWez0vCu6dtnpLIzfuuo3bN3x62LBIyMDCfvMYP+Qg=
-github.com/juju/testing v1.1.0/go.mod h1:1XQGptw6JWFvRWb3ewilUdTBG0oGcoI2kdX9Z1VEzhU=
+github.com/juju/testing v1.2.0 h1:Q0wxjaxx4XPVEN+SgzxKr3d82pjmSBcuM3WndAU391c=
+github.com/juju/testing v1.2.0/go.mod h1:lqZVzNwBKAbylGZidK77ts6kIdoOkmD52+4m0ysetPo=
 github.com/juju/txn/v3 v3.0.2 h1:ibKhRlQmslPj88QfxND8hX4Sv6rTRKOb+HSp/ti1sEg=
 github.com/juju/txn/v3 v3.0.2/go.mod h1:DlFlqNZkgzE4NolIxhSvYOok/heIOjhXLx3Z5oUTyy4=
 github.com/juju/usso v1.0.1 h1:zyQhSUJnhFZdPqVAmPeqXYlnYXv+i0Cp1Ii+aziMXGs=
 github.com/juju/usso v1.0.1/go.mod h1:3cvBcGVmWXyHhrBHBQtpNBzca/JRg4S5XH88Hj/NsYA=
 github.com/juju/utils/v3 v3.1.1 h1:shEMr/4Wkw0YCOPz5IFOYkLv1ec50pzRi59TRl0qQ/0=
 github.com/juju/utils/v3 v3.1.1/go.mod h1:nAj3sHtdYfAkvnkqttTy3Xzm2HzkD9Hfgnc+upOW2Z8=
+github.com/juju/utils/v4 v4.0.2 h1:lh1cPruYCPLWBLuZpaAP18cc+3j9X/JsLExjwQ/+NxQ=
+github.com/juju/utils/v4 v4.0.2/go.mod h1:j5wVHbRzw2LF85mb3H46cPPXBkyw5k4laDL6cOW55LY=
 github.com/juju/version/v2 v2.0.1 h1:4psP9XDv8qIbSdv3llCmcmBXe+wvm57BvYp2sG/i6zc=
 github.com/juju/version/v2 v2.0.1/go.mod h1:OK+DKO9ve3fFCVUZGT8ZbUWU2TnZh914S6gMhiM2hXg=
 github.com/juju/webbrowser v1.0.0 h1:JLdmbFtCGY6Qf2jmS6bVaenJFGIFkdF1/BjUm76af78=

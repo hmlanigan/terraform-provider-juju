@@ -128,7 +128,7 @@ func (r *machineResource) Schema(_ context.Context, req resource.SchemaRequest, 
 				},
 			},
 			DisksKey: schema.StringAttribute{
-				Description: "Storage constraints for disks to attach to the machine(s).",
+				Description: "StorageContraints constraints for disks to attach to the machine(s).",
 				Optional:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),

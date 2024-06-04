@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/dustin/go-humanize v1.0.1
 	github.com/hashicorp/terraform-plugin-framework v1.9.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.12.0
 	github.com/hashicorp/terraform-plugin-go v0.23.0
@@ -25,6 +26,7 @@ require (
 	github.com/juju/names/v5 v5.0.0
 	github.com/juju/retry v1.0.0
 	github.com/juju/utils/v3 v3.1.1
+	github.com/juju/utils/v4 v4.0.2
 	github.com/juju/version/v2 v2.0.1
 	github.com/rs/zerolog v1.32.0
 	github.com/stretchr/testify v1.9.0
@@ -69,7 +71,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -124,6 +125,7 @@ require (
 	github.com/juju/idmclient/v2 v2.0.0 // indirect
 	github.com/juju/jsonschema v1.0.0 // indirect
 	github.com/juju/loggo v1.0.0 // indirect
+	github.com/juju/loggo/v2 v2.0.0 // indirect
 	github.com/juju/lru v1.0.0 // indirect
 	github.com/juju/lumberjack/v2 v2.0.2 // indirect
 	github.com/juju/mgo/v3 v3.0.4 // indirect

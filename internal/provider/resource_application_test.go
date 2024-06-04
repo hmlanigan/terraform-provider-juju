@@ -507,6 +507,33 @@ func TestAcc_ResourceApplication_UpdateEndpointBindings(t *testing.T) {
 	})
 }
 
+func TestAcc_ResourceApplication_Storage(t *testing.T) {
+	modelName := acctest.RandomWithPrefix("tf-test-application-storage")
+	appName := "test-app-storage"
+
+	storageConstraints := map[string]string{"label": "pgdata", "size": "8M", "pool": "lxd", "count": "1"}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: frameworkProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccResourceApplicationStorage(modelName, appName, storageConstraints),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("juju_application."+appName, "model", modelName),
+					resource.TestCheckResourceAttr("juju_application."+appName, "storage.#", "1"),
+					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", map[string]string{"pool": "lxd", "size": "8M", "count": "1", "label": "pgdata"}),
+				),
+			},
+			{
+				ImportStateVerify: true,
+				ImportState:       true,
+				ResourceName:      "juju_application." + appName,
+			},
+		},
+	})
+}
+
 func testAccResourceApplicationBasic_Minimal(modelName, charmName string) string {
 	return fmt.Sprintf(`
 		resource "juju_model" "testmodel" {
@@ -852,6 +879,35 @@ resource "juju_application" "{{.AppName}}" {
 		"Constraints":      constraints,
 		"EndpointBindings": endpoints,
 	})
+}
+
+func testAccResourceApplicationStorage(modelName, appName string, storageConstraints map[string]string) string {
+	return internaltesting.GetStringFromTemplateWithData("testAccResourceApplicationStorage", `
+resource "juju_model" "{{.ModelName}}" {
+  name = "{{.ModelName}}"
+}
+
+resource "juju_application" "{{.AppName}}" {
+  model = juju_model.{{.ModelName}}.name
+  name = "{{.AppName}}"
+  charm {
+    name = "postgresql"
+    channel = "latest/stable"
+  }
+
+  storage = [{
+    label = "{{.StorageConstraints.label}}"
+    size  = "{{.StorageConstraints.size}}"
+    pool  = "{{.StorageConstraints.pool}}"
+    count = {{.StorageConstraints.count}}
+  }]
+}
+`, internaltesting.TemplateData{
+		"ModelName":          modelName,
+		"AppName":            appName,
+		"StorageConstraints": storageConstraints,
+	})
+
 }
 
 func testCheckEndpointsAreSetToCorrectSpace(modelName, appName, defaultSpace string, configuredEndpoints map[string]string) resource.TestCheckFunc {
