@@ -171,6 +171,7 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 				Default:     booldefault.StaticBool(false),
 			},
 			"placement": schema.StringAttribute{
+				CustomType:  CustomStringType{},
 				Description: "Specify the target location for the application's units",
 				Optional:    true,
 				Computed:    true,
