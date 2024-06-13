@@ -34,7 +34,7 @@ func (t CustomStringType) String() string {
 	return "CustomStringType"
 }
 
-func (t CustomStringType) ValueFromString(ctx context.Context, in basetypes.StringValue) (basetypes.StringValuable, diag.Diagnostics) {
+func (t CustomStringType) ValueFromString(_ context.Context, in basetypes.StringValue) (basetypes.StringValuable, diag.Diagnostics) {
 	// CustomStringValue defined in the value type section
 	value := CustomStringValue{
 		StringValue: in,
@@ -65,7 +65,7 @@ func (t CustomStringType) ValueFromTerraform(ctx context.Context, in tftypes.Val
 	return stringValuable, nil
 }
 
-func (t CustomStringType) ValueType(ctx context.Context) attr.Value {
+func (t CustomStringType) ValueType(_ context.Context) attr.Value {
 	// CustomStringValue defined in the value type section
 	return CustomStringValue{}
 }
@@ -98,7 +98,7 @@ func (v CustomStringValue) Equal(o attr.Value) bool {
 	return planSet.Difference(stateSet).IsEmpty() && stateSet.Difference(planSet).IsEmpty()
 }
 
-func (v CustomStringValue) Type(ctx context.Context) attr.Type {
+func (v CustomStringValue) Type(_ context.Context) attr.Type {
 	// CustomStringType defined in the schema type section
 	return CustomStringType{}
 }

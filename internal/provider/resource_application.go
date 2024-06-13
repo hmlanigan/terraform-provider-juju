@@ -76,15 +76,15 @@ type applicationResource struct {
 // applicationResourceModel describes the application data model.
 // tfsdk must match user resource schema attribute names.
 type applicationResourceModel struct {
-	ApplicationName  types.String `tfsdk:"name"`
-	Charm            types.List   `tfsdk:"charm"`
-	Config           types.Map    `tfsdk:"config"`
-	Constraints      types.String `tfsdk:"constraints"`
-	Expose           types.List   `tfsdk:"expose"`
-	ModelName        types.String `tfsdk:"model"`
-	Placement        types.String `tfsdk:"placement"`
-	EndpointBindings types.Set    `tfsdk:"endpoint_bindings"`
-	Resources        types.Map    `tfsdk:"resources"`
+	ApplicationName  types.String     `tfsdk:"name"`
+	Charm            types.List       `tfsdk:"charm"`
+	Config           types.Map        `tfsdk:"config"`
+	Constraints      types.String     `tfsdk:"constraints"`
+	Expose           types.List       `tfsdk:"expose"`
+	ModelName        types.String     `tfsdk:"model"`
+	Placement        CustomStringType `tfsdk:"placement"`
+	EndpointBindings types.Set        `tfsdk:"endpoint_bindings"`
+	Resources        types.Map        `tfsdk:"resources"`
 	// TODO - remove Principal when we version the schema
 	// and remove deprecated elements. Once we create upgrade
 	// functionality it can be removed from the structure.
@@ -483,7 +483,7 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 			Constraints:      parsedConstraints,
 			Trust:            plan.Trust.ValueBool(),
 			Expose:           expose,
-			Placement:        plan.Placement.ValueString(),
+			Placement:        plan.Placement.String(),
 			EndpointBindings: endpointBindings,
 			Resources:        resourceRevisions,
 		},
@@ -506,7 +506,7 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Save plan into Terraform state
 	plan.Constraints = types.StringValue(readResp.Constraints.String())
-	plan.Placement = types.StringValue(readResp.Placement)
+	plan.Placement = CustomStringValue(readResp.Placement)
 	plan.Principal = types.BoolNull()
 	plan.ApplicationName = types.StringValue(createResp.AppName)
 	planCharm.Revision = types.Int64Value(int64(readResp.Revision))
