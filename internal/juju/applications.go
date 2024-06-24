@@ -137,22 +137,22 @@ func ConfigEntryToString(input interface{}) string {
 }
 
 type CreateApplicationInput struct {
-	ApplicationName   string
-	ModelName         string
-	CharmName         string
-	CharmChannel      string
-	CharmBase         string
-	CharmSeries       string
-	CharmRevision     int
-	Units             int
-	Trust             bool
-	Expose            map[string]interface{}
-	Config            map[string]string
-	Placement         string
-	Constraints       constraints.Value
-	EndpointBindings  map[string]string
-	Resources         map[string]int
-	StorageContraints map[string]jujustorage.Constraints
+	ApplicationName    string
+	ModelName          string
+	CharmName          string
+	CharmChannel       string
+	CharmBase          string
+	CharmSeries        string
+	CharmRevision      int
+	Units              int
+	Trust              bool
+	Expose             map[string]interface{}
+	Config             map[string]string
+	Placement          string
+	Constraints        constraints.Value
+	EndpointBindings   map[string]string
+	Resources          map[string]int
+	StorageConstraints map[string]jujustorage.Constraints
 }
 
 // validateAndTransform returns transformedCreateApplicationInput which
@@ -169,7 +169,7 @@ func (input CreateApplicationInput) validateAndTransform(conn api.Connection) (p
 	parsed.trust = input.Trust
 	parsed.units = input.Units
 	parsed.resources = input.Resources
-	parsed.storage = input.StorageContraints
+	parsed.storage = input.StorageConstraints
 
 	appName := input.ApplicationName
 	if appName == "" {
@@ -781,7 +781,7 @@ func (c applicationsClient) ReadApplicationWithRetryOnNotFound(ctx context.Conte
 				return fmt.Errorf("ReadApplicationWithRetryOnNotFound: need %d machines, have %d", output.Units, len(machines))
 			}
 
-			// NOTE: Application can always have storages. However, they
+			// NOTE: Application can always have storage. However, they
 			// will not be listed right after the application is created. So
 			// we need to wait for the storages to be ready. And we need to
 			// check if all storage constraints have pool equal "" and size equal 0
@@ -892,8 +892,10 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 
 	appInfo := apps[0].Result
 
-	// TODO: Investigate why we're getting the full status here when
-	// application status is needed. include storage.
+	// We are currently retrieving the full status, which might be more information than necessary.
+	// The main focus is on the application status, particularly including the storage status.
+	// It might be more efficient to directly query for the application status and its associated storage status.
+	// TODO: Investigate if there's a way to optimize this by only fetching the required information.
 	status, err := clientAPIClient.Status(&apiclient.StatusArgs{
 		Patterns:       []string{},
 		IncludeStorage: true,
@@ -912,20 +914,10 @@ func (c applicationsClient) ReadApplication(input *ReadApplicationInput) (*ReadA
 		return nil, fmt.Errorf("no status returned for application: %s", input.AppName)
 	}
 
-	//// Print Full status
-	//c.Tracef("Full status", map[string]interface{}{"status": status})
-	//
-	//// Get storage info from the full status.
-	//for _, sst := range status.StorageContraints {
-	//	c.Tracef("StorageContraints status", map[string]interface{}{"storage": sst.StorageTag, "kind": sst.Kind})
-	//}
-	//for _, fst := range status.Filesystems {
-	//	c.Tracef("Filesystem status", map[string]interface{}{"storage": fst.StorageContraints.StorageTag, "pool": fst.Info.Pool, "size": fst.Info.Size})
-	//}
 	storages := transformToStorageConstraints(status.Storage, status.Filesystems, status.Volumes)
 	// Print storage to console
 	for k, v := range storages {
-		c.Tracef("StorageContraints constraints", map[string]interface{}{"storage": k, "constraints": v})
+		c.Tracef("StorageConstraints constraints", map[string]interface{}{"storage": k, "constraints": v})
 	}
 
 	allocatedMachines := set.NewStrings()

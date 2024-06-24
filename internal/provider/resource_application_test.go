@@ -508,10 +508,16 @@ func TestAcc_ResourceApplication_UpdateEndpointBindings(t *testing.T) {
 }
 
 func TestAcc_ResourceApplication_Storage(t *testing.T) {
+	if testingCloud != LXDCloudTesting {
+		t.Skip(t.Name() + " only runs with LXD")
+	}
 	modelName := acctest.RandomWithPrefix("tf-test-application-storage")
 	appName := "test-app-storage"
 
-	storageConstraints := map[string]string{"label": "pgdata", "size": "8M", "pool": "lxd", "count": "1"}
+	storageConstraints := map[string]string{"label": "files", "size": "102M"}
+
+	// print plan
+	t.Log(testAccResourceApplicationStorage(modelName, appName, storageConstraints))
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -522,7 +528,7 @@ func TestAcc_ResourceApplication_Storage(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("juju_application."+appName, "model", modelName),
 					resource.TestCheckResourceAttr("juju_application."+appName, "storage.#", "1"),
-					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", map[string]string{"pool": "lxd", "size": "8M", "count": "1", "label": "pgdata"}),
+					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", map[string]string{"size": "102M", "label": "files"}),
 				),
 			},
 			{
@@ -611,6 +617,10 @@ resource "juju_application" "{{.AppName}}" {
   config = {
     {{.ConfigParamName}} = "{{.ConfigParamName}}-value"
   }
+  storage = [{
+    label = "runner"
+    size = "107G"
+  }]
   {{ end }}
 
   {{ if ne .ResourceParamName "" }}
@@ -891,23 +901,23 @@ resource "juju_application" "{{.AppName}}" {
   model = juju_model.{{.ModelName}}.name
   name = "{{.AppName}}"
   charm {
-    name = "postgresql"
+    name = "ubuntu"
     channel = "latest/stable"
+    revision = 24
   }
 
   storage = [{
     label = "{{.StorageConstraints.label}}"
     size  = "{{.StorageConstraints.size}}"
-    pool  = "{{.StorageConstraints.pool}}"
-    count = {{.StorageConstraints.count}}
   }]
+
+  units = 1
 }
 `, internaltesting.TemplateData{
 		"ModelName":          modelName,
 		"AppName":            appName,
 		"StorageConstraints": storageConstraints,
 	})
-
 }
 
 func testCheckEndpointsAreSetToCorrectSpace(modelName, appName, defaultSpace string, configuredEndpoints map[string]string) resource.TestCheckFunc {
