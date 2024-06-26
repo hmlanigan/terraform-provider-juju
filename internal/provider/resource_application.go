@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -173,6 +173,7 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 			"storage": schema.SetNestedAttribute{
 				Description: "Configure storage constraints for the juju application.",
 				Optional:    true,
+				Computed:    true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"label": schema.StringAttribute{
@@ -186,7 +187,6 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 							Description: "The size of each volume. E.g. 100G.",
 							Optional:    true,
 							Computed:    true,
-							Default:     stringdefault.StaticString("1G"),
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
@@ -194,6 +194,7 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 						"pool": schema.StringAttribute{
 							Description: "Name of the storage pool to use. E.g. ebs on aws.",
 							Optional:    true,
+							Computed:    true,
 							PlanModifiers: []planmodifier.String{
 								stringplanmodifier.UseStateForUnknown(),
 							},
@@ -536,7 +537,7 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 
 	// Parse storage
 	var storageConstraints map[string]jujustorage.Constraints
-	if !plan.Storage.IsNull() {
+	if !plan.Storage.IsUnknown() {
 		var storageSlice []nestedStorage
 		resp.Diagnostics.Append(plan.Storage.ElementsAs(ctx, &storageSlice, false)...)
 		if resp.Diagnostics.HasError() {
@@ -552,10 +553,14 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 				storageCount := storage.Count.ValueInt64()
 
 				// Validate storage size
-				parsedStorageSize, err := utils.ParseSize(storageSize)
-				if err != nil {
-					resp.Diagnostics.AddError("3Invalid Storage Size", fmt.Sprintf("3Invalid storage size %q: %s", storageSize, err))
-					return
+				var parsedStorageSize uint64
+				if storageSize != "" {
+					var err error
+					parsedStorageSize, err = utils.ParseSize(storageSize)
+					if err != nil {
+						resp.Diagnostics.AddError("Invalid Storage Size", fmt.Sprintf("Invalid storage size %q: %s", storageSize, err))
+						return
+					}
 				}
 
 				storageConstraints[storageName] = jujustorage.Constraints{
@@ -592,6 +597,21 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create application, got error: %s", err))
 		return
 	}
+
+	// trace storage constraints
+	r.trace("create application storage constraints", map[string]interface{}{"storageConstraints": storageConstraints})
+
+	// write storage constraints to private state
+	var setStorageConstraintBytes []byte
+	if len(storageConstraints) > 0 {
+		setStorageConstraintBytes, err = json.Marshal(storageConstraints)
+		if err != nil {
+			resp.Diagnostics.AddError("Internal Error", fmt.Sprintf("Unable to marshal storage constraints, got error: %s", err))
+			return
+		}
+	}
+	resp.Private.SetKey(ctx, "storage", setStorageConstraintBytes)
+
 	r.trace(fmt.Sprintf("create application resource %q", createResp.AppName))
 
 	readResp, err := r.client.Applications.ReadApplicationWithRetryOnNotFound(ctx, &juju.ReadApplicationInput{
@@ -620,6 +640,45 @@ func (r *applicationResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.Append(dErr...)
 		return
 	}
+
+	if plan.Storage.IsUnknown() {
+		var getStorageConstraintBytes []byte
+		getStorageConstraintBytes, dErr = resp.Private.GetKey(ctx, "storage")
+		if dErr.HasError() {
+			resp.Diagnostics.Append(dErr...)
+			return
+		}
+		var privateStorageConstraints map[string]jujustorage.Constraints
+		if len(getStorageConstraintBytes) > 0 {
+			if err = json.Unmarshal(getStorageConstraintBytes, &privateStorageConstraints); err != nil {
+				resp.Diagnostics.AddError("Internal Error", fmt.Sprintf("Unable to unmarshal storage constraints, got error: %s", err))
+				return
+			}
+		}
+		storageType := req.Config.Schema.GetAttributes()[StorageKey].(schema.SetNestedAttribute).NestedObject.Type()
+		var nestedStorageSlice []nestedStorage
+		for name, storage := range readResp.Storage {
+			if _, ok := privateStorageConstraints[name]; !ok {
+				humanizedSize := transformSizeToHumanizedFormat(storage.Size)
+				nestedStorageSlice = append(nestedStorageSlice, nestedStorage{
+					Label: types.StringValue(name),
+					Size:  types.StringValue(humanizedSize),
+					Pool:  types.StringValue(storage.Pool),
+					Count: types.Int64Value(int64(storage.Count)),
+				})
+			}
+		}
+		if len(nestedStorageSlice) > 0 {
+			plan.Storage, dErr = types.SetValueFrom(ctx, storageType, nestedStorageSlice)
+			if dErr.HasError() {
+				resp.Diagnostics.Append(dErr...)
+				return
+			}
+		} else {
+			plan.Storage = types.SetNull(storageType)
+		}
+	}
+
 	plan.ID = types.StringValue(newAppID(plan.ModelName.ValueString(), createResp.AppName))
 	r.trace("Created", applicationResourceModelForLogging(ctx, &plan))
 
@@ -687,7 +746,7 @@ func (r *applicationResource) Read(ctx context.Context, req resource.ReadRequest
 	if response == nil {
 		return
 	}
-	r.trace(fmt.Sprint("read application", map[string]interface{}{"resource": appName, "response": response}))
+	r.trace("read application", map[string]interface{}{"resource": appName, "response": response})
 
 	state.ApplicationName = types.StringValue(appName)
 	state.ModelName = types.StringValue(modelName)
@@ -747,33 +806,46 @@ func (r *applicationResource) Read(ctx context.Context, req resource.ReadRequest
 		}
 	}
 
-	// convert the storage map to a list of nestedStorage
-	nestedStorageSlice := make([]nestedStorage, 0, len(response.Storage))
-	for name, storage := range response.Storage {
-		humanizedSize := transformSizeToHumanizedFormat(storage.Size)
-
-		if storage.Pool != "lxd" {
-			nestedStorageSlice = append(nestedStorageSlice, nestedStorage{
-				Label: types.StringValue(name),
-				Size:  types.StringValue(humanizedSize),
-				Pool:  types.StringValue(storage.Pool),
-				Count: types.Int64Value(int64(storage.Count)),
-			})
-		} else {
-			// 'lxd' is not a pool, it's a special case used for lxd storage.
-			nestedStorageSlice = append(nestedStorageSlice, nestedStorage{
-				Label: types.StringValue(name),
-				Size:  types.StringValue(humanizedSize),
-				Count: types.Int64Value(int64(storage.Count)),
-			})
-		}
-		storageType := req.State.Schema.GetAttributes()[StorageKey].(schema.SetNestedAttribute).NestedObject.Type()
-		state.Storage, dErr = types.SetValueFrom(ctx, storageType, nestedStorageSlice)
-		if dErr.HasError() {
-			resp.Diagnostics.Append(dErr...)
+	var getPrivateStorageConstraintBytes []byte
+	getPrivateStorageConstraintBytes, dErr = req.Private.GetKey(ctx, "storage")
+	if dErr.HasError() {
+		resp.Diagnostics.Append(dErr...)
+		return
+	}
+	var privateStorageConstraints map[string]jujustorage.Constraints
+	if len(getPrivateStorageConstraintBytes) > 0 {
+		if err := json.Unmarshal(getPrivateStorageConstraintBytes, &privateStorageConstraints); err != nil {
+			resp.Diagnostics.AddError("Internal Error", fmt.Sprintf("Unable to unmarshal storage constraints, got error: %s", err))
 			return
 		}
 	}
+	// trace private storage constraints
+	r.trace("read private storage constraints", map[string]interface{}{"privateStorageConstraints": privateStorageConstraints})
+
+	if state.Storage.IsUnknown() {
+		// convert the storage map to a list of nestedStorage
+		nestedStorageSlice := make([]nestedStorage, 0, len(response.Storage))
+		for name, storage := range response.Storage {
+			if _, ok := privateStorageConstraints[name]; !ok {
+				humanizedSize := transformSizeToHumanizedFormat(storage.Size)
+				nestedStorageSlice = append(nestedStorageSlice, nestedStorage{
+					Label: types.StringValue(name),
+					Size:  types.StringValue(humanizedSize),
+					Pool:  types.StringValue(storage.Pool),
+					Count: types.Int64Value(int64(storage.Count)),
+				})
+			}
+		}
+		if len(nestedStorageSlice) > 0 {
+			storageType := req.State.Schema.GetAttributes()[StorageKey].(schema.SetNestedAttribute).NestedObject.Type()
+			state.Storage, dErr = types.SetValueFrom(ctx, storageType, nestedStorageSlice)
+			if dErr.HasError() {
+				resp.Diagnostics.Append(dErr...)
+				return
+			}
+		}
+	}
+
 	resourceType := req.State.Schema.GetAttributes()[ResourceKey].(schema.MapAttribute).ElementType
 	state.Resources, dErr = r.configureResourceData(ctx, resourceType, state.Resources, response.Resources)
 	if dErr.HasError() {
@@ -1016,8 +1088,14 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 	// Check if we have new storage in plan that not existed in the state, and add their constraints to the
 	// update application input.
 	if !plan.Storage.Equal(state.Storage) {
-		if r.updateStorage(ctx, resp, plan, state, updateApplicationInput) {
-			return
+		if !plan.Storage.IsUnknown() {
+			if r.updateStorage(ctx, resp, plan, state, updateApplicationInput) {
+				return
+			}
+		}
+		if len(updateApplicationInput.StorageConstraints) == 0 {
+			storageType := req.Config.Schema.GetAttributes()[StorageKey].(schema.SetNestedAttribute).NestedObject.Type()
+			plan.Storage = types.SetNull(storageType)
 		}
 	}
 

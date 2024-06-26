@@ -155,9 +155,11 @@ func TestAcc_ResourceApplication_UpdatesRevisionConfig(t *testing.T) {
 	if testingCloud != LXDCloudTesting {
 		t.Skip(t.Name() + " only runs with LXD")
 	}
+
 	modelName := acctest.RandomWithPrefix("tf-test-application")
 	appName := "github-runner"
 	configParamName := "runner-storage"
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: frameworkProviderFactories,
@@ -516,7 +518,7 @@ func TestAcc_ResourceApplication_Storage(t *testing.T) {
 
 	storageConstraints := map[string]string{"label": "files", "size": "102M"}
 
-	// print plan
+	// trace plan
 	t.Log(testAccResourceApplicationStorage(modelName, appName, storageConstraints))
 
 	resource.Test(t, resource.TestCase{
@@ -528,7 +530,7 @@ func TestAcc_ResourceApplication_Storage(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr("juju_application."+appName, "model", modelName),
 					resource.TestCheckResourceAttr("juju_application."+appName, "storage.#", "1"),
-					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", map[string]string{"size": "102M", "label": "files"}),
+					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", storageConstraints),
 				),
 			},
 			{
@@ -617,10 +619,6 @@ resource "juju_application" "{{.AppName}}" {
   config = {
     {{.ConfigParamName}} = "{{.ConfigParamName}}-value"
   }
-  storage = [{
-    label = "runner"
-    size = "107G"
-  }]
   {{ end }}
 
   {{ if ne .ResourceParamName "" }}

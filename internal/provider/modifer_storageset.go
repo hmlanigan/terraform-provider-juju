@@ -6,7 +6,6 @@ package provider
 import (
 	"context"
 	"fmt"
-
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	jujustorage "github.com/juju/juju/storage"
@@ -16,10 +15,10 @@ import (
 // storageSetRequiresReplace is a plan modifier function that determines if the storage set requires a replace.
 // It compares the storage set in the plan with the storage set in the state.
 // Return false if new items were added and old items were not changed.
-// Return true if old items were removed
+// Return true if old items were removed.
 func storageSetRequiresReplace(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
 	planSet := make(map[string]jujustorage.Constraints)
-	if !req.PlanValue.IsNull() {
+	if !req.PlanValue.IsUnknown() {
 		var planStorageSlice []nestedStorage
 		resp.Diagnostics.Append(req.PlanValue.ElementsAs(ctx, &planStorageSlice, false)...)
 		if resp.Diagnostics.HasError() {
@@ -35,7 +34,7 @@ func storageSetRequiresReplace(ctx context.Context, req planmodifier.SetRequest,
 				// Validate storage size
 				parsedStorageSize, err := utils.ParseSize(storageSize)
 				if err != nil {
-					resp.Diagnostics.AddError("1Invalid Storage Size", fmt.Sprintf("1Invalid storage size %q: %s", storageSize, err))
+					resp.Diagnostics.AddError("Invalid Storage Size", fmt.Sprintf("Invalid storage size %q: %s", storageSize, err))
 					return
 				}
 
@@ -47,11 +46,8 @@ func storageSetRequiresReplace(ctx context.Context, req planmodifier.SetRequest,
 			}
 		}
 	}
-
 	stateSet := make(map[string]jujustorage.Constraints)
-
-	// print the state stateSet
-	if !req.StateValue.IsNull() {
+	if !req.StateValue.IsUnknown() {
 		var stateStorageSlice []nestedStorage
 		resp.Diagnostics.Append(req.StateValue.ElementsAs(ctx, &stateStorageSlice, false)...)
 		if resp.Diagnostics.HasError() {
@@ -67,7 +63,7 @@ func storageSetRequiresReplace(ctx context.Context, req planmodifier.SetRequest,
 				// Validate storage size
 				parsedStorageSize, err := utils.ParseSize(storageSize)
 				if err != nil {
-					resp.Diagnostics.AddError("2Invalid Storage Size", fmt.Sprintf("2Invalid storage size %q [%q]: %s", storageSize, stateStorageSlice, err))
+					resp.Diagnostics.AddError("Invalid Storage Size", fmt.Sprintf("Invalid storage size %q [%q]: %s", storageSize, stateStorageSlice, err))
 					return
 				}
 
