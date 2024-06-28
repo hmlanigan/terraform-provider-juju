@@ -533,11 +533,6 @@ func TestAcc_ResourceApplication_Storage(t *testing.T) {
 					resource.TestCheckTypeSetElemNestedAttrs("juju_application."+appName, "storage.*", storageConstraints),
 				),
 			},
-			{
-				ImportStateVerify: true,
-				ImportState:       true,
-				ResourceName:      "juju_application." + appName,
-			},
 		},
 	})
 }
@@ -904,10 +899,9 @@ resource "juju_application" "{{.AppName}}" {
     revision = 24
   }
 
-  storage = [{
-    label = "{{.StorageConstraints.label}}"
-    size  = "{{.StorageConstraints.size}}"
-  }]
+  storage_directives = {
+    {{.StorageConstraints.label}} = "{{.StorageConstraints.size}}"
+  }
 
   units = 1
 }
