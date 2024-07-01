@@ -23,7 +23,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -192,35 +191,20 @@ func (r *applicationResource) Schema(_ context.Context, _ resource.SchemaRequest
 						"label": schema.StringAttribute{
 							Description: "The specific storage option defined in the charm.",
 							Computed:    true,
-							PlanModifiers: []planmodifier.String{
-								stringplanmodifier.UseStateForUnknown(),
-							},
 						},
 						"size": schema.StringAttribute{
 							Description: "The size of each volume.",
 							Computed:    true,
-							PlanModifiers: []planmodifier.String{
-								stringplanmodifier.UseStateForUnknown(),
-							},
 						},
 						"pool": schema.StringAttribute{
 							Description: "Name of the storage pool used.",
 							Computed:    true,
-							PlanModifiers: []planmodifier.String{
-								stringplanmodifier.UseStateForUnknown(),
-							},
 						},
 						"count": schema.Int64Attribute{
 							Description: "The number of volumes.",
 							Computed:    true,
-							PlanModifiers: []planmodifier.Int64{
-								int64planmodifier.UseStateForUnknown(),
-							},
 						},
 					},
-				},
-				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"trust": schema.BoolAttribute{
@@ -1105,9 +1089,15 @@ func (r *applicationResource) Update(ctx context.Context, req resource.UpdateReq
 				resp.Diagnostics.Append(dErr...)
 				return
 			}
+		} else {
+			plan.Storage = types.SetNull(storageType)
 		}
 	} else {
-		plan.Storage = state.Storage
+		if !state.Storage.IsUnknown() {
+			plan.Storage = state.Storage
+		} else {
+			plan.Storage.IsNull()
+		}
 	}
 
 	plan.ID = types.StringValue(newAppID(plan.ModelName.ValueString(), plan.ApplicationName.ValueString()))
