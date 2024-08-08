@@ -348,9 +348,12 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	}
 
 	applicationAPIClient := apiapplication.NewClient(conn)
-	resourceHttpClient := ResourceHttpClient(conn)
+	resourceClient, err := apiresources.NewClient(conn)
+	if err != nil {
+		return nil, err
+	}
 	if applicationAPIClient.BestAPIVersion() >= 19 {
-		err = c.deployFromRepository(applicationAPIClient, resourceHttpClient, transformedInput)
+		err = c.deployFromRepository(applicationAPIClient, resourceClient, transformedInput)
 	} else {
 		err = c.legacyDeploy(ctx, conn, applicationAPIClient, transformedInput)
 		err = jujuerrors.Annotate(err, "legacy deploy method")
@@ -368,7 +371,7 @@ func (c applicationsClient) CreateApplication(ctx context.Context, input *Create
 	}, err
 }
 
-func (c applicationsClient) deployFromRepository(applicationAPIClient *apiapplication.Client, resourceHttpClient *HttpRequestClient, transformedInput transformedCreateApplicationInput) error {
+func (c applicationsClient) deployFromRepository(applicationAPIClient ApplicationAPIClient, resourceClient ResourceAPIClient, transformedInput transformedCreateApplicationInput) error {
 	settingsForYaml := map[interface{}]interface{}{transformedInput.applicationName: transformedInput.config}
 	configYaml, err := goyaml.Marshal(settingsForYaml)
 	if err != nil {
@@ -398,7 +401,7 @@ func (c applicationsClient) deployFromRepository(applicationAPIClient *apiapplic
 
 	fileSystem := osFilesystem{}
 	// Upload the provided local resources to Juju
-	uploadErr := uploadExistingPendingResources(deployInfo.Name, localPendingResources, fileSystem, resourceHttpClient)
+	uploadErr := uploadExistingPendingResources(deployInfo.Name, localPendingResources, fileSystem, resourceClient)
 
 	if uploadErr != nil {
 		return uploadErr

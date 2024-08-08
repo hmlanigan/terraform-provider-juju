@@ -45,6 +45,7 @@ type ApplicationAPIClient interface {
 	AddUnits(args apiapplication.AddUnitsParams) ([]string, error)
 	ApplicationsInfo(applications []names.ApplicationTag) ([]params.ApplicationInfoResult, error)
 	Deploy(args apiapplication.DeployArgs) error
+	DeployFromRepository(arg apiapplication.DeployFromRepositoryArg) (apiapplication.DeployInfo, []apiapplication.PendingResourceUpload, []error)
 	DestroyUnits(in apiapplication.DestroyUnitsParams) ([]params.DestroyUnitResult, error)
 	DestroyApplications(in apiapplication.DestroyApplicationsParams) ([]params.DestroyApplicationResult, error)
 	Expose(application string, exposedEndpoints map[string]params.ExposedEndpoint) error
@@ -66,6 +67,7 @@ type ModelConfigAPIClient interface {
 type ResourceAPIClient interface {
 	AddPendingResources(args apiresources.AddPendingResourcesArgs) ([]string, error)
 	ListResources(applications []string) ([]resources.ApplicationResources, error)
+	Upload(application, name, filename, pendingID string, reader io.ReadSeeker) error
 	UploadPendingResource(applicationID string, resource charmresources.Resource, filename string, r io.ReadSeeker) (id string, err error)
 }
 
