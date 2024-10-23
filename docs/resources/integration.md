@@ -68,9 +68,9 @@ resource "juju_integration" "this" {
 
 Optional:
 
-- `endpoint` (String) The endpoint name.
-- `name` (String) The name of the application.
-- `offer_url` (String) The URL of a remote application.
+- `endpoint` (String) The endpoint name. This attribute may not be used at the same time as the offer_url.
+- `name` (String) The name of the application. This attribute may not be used at the same time as the offer_url.
+- `offer_url` (String) The URL of a remote application. This attribute may not be used at the same time as name and endpoint.
 
 
 ### Notes
